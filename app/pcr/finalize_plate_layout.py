@@ -1,6 +1,25 @@
 #Minta azonosítók és kontrollok összefésülése
 import pandas as pd
 
+def well_position_to_well(well_position: str) -> int:
+    # Szétbontás (pl. "M6" → "M" és "6")
+    row_letter = well_position[0].upper()
+    col_number = int(well_position[1:])
+    
+    # Sor index meghatározása (A=0, B=1, ..., P=15)
+    row_index = ord(row_letter) - ord('A')
+    
+    # Validáció
+    if row_index < 0 or row_index > 15:
+        raise ValueError("Érvénytelen sor (A-P lehet)")
+    if col_number < 1 or col_number > 24:
+        raise ValueError("Érvénytelen oszlop (1-24 lehet)")
+    
+    # Well sorszám kiszámítása
+    well = row_index * 24 + col_number
+    
+    return well
+
 def finalize_plate_layout(sampleid_df, control_map):
     """
     Összefésüli a mintaazonosítókat és a kontrollokat.
@@ -29,7 +48,7 @@ def finalize_plate_layout(sampleid_df, control_map):
             # Ha olyan well-t jelöltél ki kontrollnak, ami nincs a listában (pl. üres volt)
             # Ez ritka, de így biztonságos
             new_row = pd.DataFrame([{
-                'well': None, # Vagy számolható pozícióból
+                'well': well_position_to_well(position),
                 'well_position': position,
                 'sample_id': control_name,
                 'well_type': 'Control'
