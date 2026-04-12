@@ -1,0 +1,1 @@
+PCR_KITS_JSON_PATH = "C:\\Users\\anett\\Repository\\szakdoga\\pcr_kit_test.json"
