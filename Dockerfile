@@ -5,7 +5,8 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-COPY requirements.txt .
+COPY requirements.txt pcr_kit_test.json .
+
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
