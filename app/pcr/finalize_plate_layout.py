@@ -1,5 +1,6 @@
 #Minta azonosítók és kontrollok összefésülése
 import pandas as pd
+from app.utils.plate_utils import normalize_sample_id_df
 
 def well_position_to_well(well_position: str) -> int:
     # Szétbontás (pl. "M6" → "M" és "6")
@@ -28,10 +29,14 @@ def finalize_plate_layout(sampleid_df, control_map):
     if sampleid_df is None:
         return None
 
-    # Másolat készítése, hogy ne az eredeti DF-et módosítsuk
-    final_df = sampleid_df.copy()
-    
-    # Új oszlop a típusnak (alapértelmezett: Sample)
+    # Normalize input so we always have a string sample_id and standard well_position values
+    final_df = normalize_sample_id_df(sampleid_df).rename(
+        columns={
+            'Well': 'well_position',
+            'Sample_ID': 'sample_id'
+        }
+    )
+    final_df['well'] = final_df['well_position'].apply(well_position_to_well)
     final_df['well_type'] = 'Sample'
 
     # Kontrollok rögzítése
