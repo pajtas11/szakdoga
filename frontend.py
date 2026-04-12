@@ -688,7 +688,7 @@ elif selected_view == "PCR görbe megjelenítés":
                     
                         if not res_row.empty:
                             row = res_row.iloc[0]
-                            if row.get('well_type') == 'Control':
+                            if row.get('sample_id') == 'NTC' or row.get('sample_id') == 'PK' or row.get('sample_id') == 'Prep_NTC':
                                 status = "Kontroll"
                                 color = "#3498db"
                             elif not row.get('valid', True):
