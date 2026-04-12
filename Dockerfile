@@ -1,15 +1,13 @@
-FROM python:3.12 AS builder
+FROM python:3.12-slim
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
+
 WORKDIR /app
 
-RUN pip install poetry
-RUN poetry config virtualenvs.in-project true
-COPY pyproject.toml poetry.lock ./
-RUN poetry install
-FROM python:3.12-slim
-WORKDIR /app
-COPY --from=builder /app/.venv .venv/
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
 COPY . .
-CMD ["/app/.venv/bin/streamlit", "run", "frontend.py"]
+
+CMD ["streamlit", "run", "frontend.py"]

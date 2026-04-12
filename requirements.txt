@@ -1,12 +1,7 @@
 
-zipfile
-xml.etree.ElementTree
-io
-pandas
-numpy
-scipy.signal
-plotly.express
-json
-pathlib
-datetime
-openpyxl
+streamlit>=1.52.2
+pandas>=2.3.3
+numpy>=1.24
+scipy>=1.10
+plotly>=5.0
+openpyxl>=3.0
