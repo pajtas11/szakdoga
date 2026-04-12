@@ -8,6 +8,10 @@ primary_region = 'ams'
 
 [build]
 
+[[processes]]
+name = "app"
+cmd = "streamlit run frontend.py"
+
 [http_service]
   internal_port = 8501
   force_https = true
