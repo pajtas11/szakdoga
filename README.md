@@ -1,6 +1,6 @@
 # Szakdolgozat — Webalapú multiplex PCR görbe értékelő
 
-Ez a repozitórium a SE-EMK Egészségügyi Adattudomány MSc szakdolgozatához készült. A projekt célja egy webalapú szoftver fejlesztése, amely multiplex real-time PCR nyers fluoreszcens adataiból képes a minták kvalitatív (pozitív/negatív) és kvantitatív (Ct érték) kiértékelésére.
+Ez a repozitori a SE-EMK Egészségügyi Adattudomány MSc szakdolgozatához készült. A projekt célja egy webalapú szoftver fejlesztése, amely multiplex real-time PCR nyers fluoreszcens adataiból képes a minták kvalitatív (pozitív/negatív) és kvantitatív (Ct érték) kiértékelésére.
 
 **Főbb jellemzők**
 - Többcsatornás (multiplex) PCR futások feldolgozása
