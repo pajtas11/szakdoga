@@ -1,0 +1,164 @@
+{
+  "kits": {
+
+    "HPV Basic Panel": {
+      "kit_name": "HPV Basic Panel v1",
+      "manufacturer": "Bionan Ltd.",
+      "catalog_number": "1979225-23",
+      "targets": {
+        "FAM": {
+          "target_name": "HPV 18",
+          "type": "target",
+          "interpretation": "positive_if_amplified"
+        },
+        "VIC": {
+          "target_name": "HPV 16",
+          "type": "target",
+          "interpretation": "positive_if_amplified"
+        },
+        "CY5": {
+          "target_name": "IC",
+          "type": "internal_control",
+          "rules": {
+            "must_amplify": true
+          }
+        }
+      },
+      "controls": {
+        "NTC": {
+          "rules": {
+            "HPV 16": true,
+            "HPV 18": true,
+            "IC": true
+          }
+        },
+        "PK": {
+          "rules": {
+            "HPV 16": false,
+            "HPV 18": false,
+            "IC": true
+          }
+        }
+      }
+    },
+
+    "Respiratory Panel (SarsCov2 + Influenza)": {
+      "kit_name": "Respiratory Panel (SarsCov2 + InfluenzaA és B)",
+      "manufacturer": "BioLab Ltd.",
+      "catalog_number": "197912-09",
+      "targets": {
+        "FAM": {
+          "target_name": "Sars-Cov2",
+          "type": "target",
+          "interpretation": "positive_if_amplified"
+        },
+        "VIC": {
+          "target_name": "RNase P",
+          "type": "internal_control",
+          "interpretation": "positive_if_amplified"
+        },
+        "ROX": {
+          "target_name": "Influenza A",
+          "type": "target",
+          "interpretation": "positive_if_amplified"
+        },
+        "CY5": {
+          "target_name": "Influenza B",
+          "type": "target",
+          "rules": {
+            "must_amplify": true
+          }
+        }
+      },
+      "controls": {
+        "NTC": {
+          "rules": {
+            "Influenza A": true,
+            "Influenza B": true,
+            "Sars-Cov2": true,
+            "RNase P": true
+          }
+        },
+        "PK": {
+          "rules": {
+            "Influenza A": false,
+            "Influenza B": false,
+            "Sars-Cov2": false,
+            "RNase P": true
+          }
+        }
+      },
+      "sample_result": {
+        "invalid minta": {
+          "rules": {
+            "Influenza A": true,
+            "Influenza B": true,
+            "Sars-Cov2": true,
+            "RNase P": true
+          }
+        },
+        "negatív minta": {
+          "rules": {
+            "Influenza A": true,
+            "Influenza B": true,
+            "Sars-Cov2": true,
+            "RNase P": false
+          }
+        },
+        "pozitív minta": {
+          "Influenza A": {
+            "rules": {
+              "Influenza A": false,
+              "Influenza B": true,
+              "Sars-Cov2": true
+            }
+          },
+          "Influenza B": {
+            "rules": {
+              "Influenza A": true,
+              "Influenza B": false,
+              "Sars-Cov2": true
+            }
+          },
+          "Influenza A és B": {
+            "rules": {
+              "Influenza A": false,
+              "Influenza B": false,
+              "Sars-Cov2": true
+            }
+          },
+          "Influenza A és B, Sars-CoV2": {
+            "rules": {
+              "Influenza A": false,
+              "Influenza B": false,
+              "Sars-Cov2": false
+            }
+          },
+          "Sars-CoV2": {
+            "rules": {
+              "Influenza A": true,
+              "Influenza B": true,
+              "Sars-Cov2": false
+            }
+          },
+          "Influenza A, Sars-CoV2" : {
+            "rules": {
+              "Influenza A": false,
+              "Influenza B": true,
+              "Sars-Cov2": false
+            }
+          },
+          "Influenza B, Sars-CoV2": {
+            "rules": {
+              "Influenza A": false,
+              "Influenza B": true,
+              "Sars-Cov2": false
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+
