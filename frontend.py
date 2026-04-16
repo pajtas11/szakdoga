@@ -108,6 +108,8 @@ elif selected_view == "Futási file":
     st.session_state.setdefault("eds_name", None)
     st.session_state.setdefault("eds_bytes", None)
     st.session_state.setdefault("raw_df", None)
+    st.session_state.setdefault("eds_uploader_key_counter", 0)
+    st.session_state.setdefault("eds_uploader_key", "eds_uploader_0")
     #st.session_state.setdefault("channels", None)
 
     # -----------------------
@@ -159,9 +161,7 @@ elif selected_view == "Futási file":
             st.session_state["eds_bytes"] = None
             st.session_state["raw_df"] = None
             st.session_state["channels"] = None
-
-            # a file_uploader widget állapotát is nullázzuk
-            st.session_state["eds_uploader"] = None
+            st.session_state["eds_uploader"] = None            
             st.rerun()
     else:
         st.warning("⚠️ Még nincs betöltött futási file. Kérlek tölts fel egy EDS fájlt.")
@@ -390,7 +390,7 @@ elif selected_view == "Minta azonosítók":
     # --------------------------------------------------
     if current_sample_df is not None:
         if st.button("Mintaazonosítók törlése", type="secondary"):
-            clear_sample_id_state()
+            clear_sample_id_state()            
             st.rerun()
 
 # ==============================
@@ -688,7 +688,7 @@ elif selected_view == "PCR görbe megjelenítés":
                     
                         if not res_row.empty:
                             row = res_row.iloc[0]
-                            if row.get('well_type') == 'Control':
+                            if row.get('sample_id') == 'NTC' or row.get('sample_id') == 'PK' or row.get('sample_id') == 'Prep_NTC':
                                 status = "Kontroll"
                                 color = "#3498db"
                             elif not row.get('valid', True):
