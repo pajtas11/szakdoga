@@ -117,7 +117,7 @@ elif selected_view == "Futási file":
     # -----------------------
     uploaded = st.file_uploader(
         "EDS fájl kiválasztása",
-        key=st.session_state["eds_uploader_key"]
+        key="eds_uploader"
     )
 
     # -----------------------
@@ -161,13 +161,7 @@ elif selected_view == "Futási file":
             st.session_state["eds_bytes"] = None
             st.session_state["raw_df"] = None
             st.session_state["channels"] = None
-            st.session_state["processed_file"] = None
-
-            # A file_uploader widget újraindításához új key-t használunk.
-            st.session_state["eds_uploader_key_counter"] += 1
-            st.session_state["eds_uploader_key"] = (
-                f"eds_uploader_{st.session_state['eds_uploader_key_counter']}"
-            )
+            st.session_state["eds_uploader"] = None            
             st.rerun()
     else:
         st.warning("⚠️ Még nincs betöltött futási file. Kérlek tölts fel egy EDS fájlt.")
@@ -302,13 +296,6 @@ elif selected_view == "Minta azonosítók":
 
     st.divider()
 
-    st.session_state.setdefault("reset_sample_id_widgets", False)
-
-    if st.session_state.get("reset_sample_id_widgets"):
-        st.session_state.pop("sample_id_mode", None)
-        st.session_state.pop("sample_id_excel_uploader", None)
-        st.session_state["reset_sample_id_widgets"] = False
-
     # --------------------------------------------------
     # Mód kiválasztása
     # --------------------------------------------------
@@ -318,7 +305,6 @@ elif selected_view == "Minta azonosítók":
             "Általános mintaazonosítók használata",
             "Excel sablon feltöltése"
         ],
-        index=0,
         key="sample_id_mode",
     )
 
@@ -340,7 +326,7 @@ elif selected_view == "Minta azonosítók":
         uploaded_sample_file = st.file_uploader(
             "Excel sablon feltöltése",
             type=["xlsx"],
-            key="sample_id_excel_uploader",
+            key="sample_id_excel_uploader"
         )
 
         if uploaded_sample_file is not None:
@@ -404,8 +390,7 @@ elif selected_view == "Minta azonosítók":
     # --------------------------------------------------
     if current_sample_df is not None:
         if st.button("Mintaazonosítók törlése", type="secondary"):
-            clear_sample_id_state()
-            st.session_state["reset_sample_id_widgets"] = True
+            clear_sample_id_state()            
             st.rerun()
 
 # ==============================
