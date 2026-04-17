@@ -117,7 +117,7 @@ elif selected_view == "Futási file":
     # -----------------------
     uploaded = st.file_uploader(
         "EDS fájl kiválasztása",
-        key="eds_uploader"
+        key=st.session_state["eds_uploader_key"]
     )
 
     # -----------------------
@@ -161,7 +161,13 @@ elif selected_view == "Futási file":
             st.session_state["eds_bytes"] = None
             st.session_state["raw_df"] = None
             st.session_state["channels"] = None
-            st.session_state["eds_uploader"] = None            
+            st.session_state["processed_file"] = None
+
+            # A file_uploader widget újraindításához új key-t használunk.
+            st.session_state["eds_uploader_key_counter"] += 1
+            st.session_state["eds_uploader_key"] = (
+                f"eds_uploader_{st.session_state['eds_uploader_key_counter']}"
+            )
             st.rerun()
     else:
         st.warning("⚠️ Még nincs betöltött futási file. Kérlek tölts fel egy EDS fájlt.")
