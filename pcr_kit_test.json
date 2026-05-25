@@ -1,7 +1,8 @@
 {
   "kits": {
-    "HPV Basic Panel": {
-      "kit_name": "HPV Basic Panel",
+
+    "HPV kit": {
+      "kit_name": "HPV Basic Panel v1",
       "manufacturer": "Bionan Ltd.",
       "catalog_number": "1979225-23",
       "targets": {
@@ -38,10 +39,46 @@
             "IC": true
           }
         }
+      },
+      "sample_result": {
+        "invalid minta": {
+          "rules": {
+            "HPV 16": true,
+            "HPV 18": true,
+            "IC": true
+          }
+        },
+        "negatív minta": {
+          "rules": {
+            "HPV 16": true,
+            "HPV 18": true,
+            "IC": false
+          }
+        },
+        "pozitív minta": {
+          "HPV 16": {
+            "rules": {
+              "HPV 16": false,
+              "HPV 18": true
+            }
+          },
+          "HPV 18": {
+            "rules": {
+              "HPV 16": true,
+              "HPV 18": false
+            }
+          },
+          "HPV 16, 18": {
+            "rules": {
+              "HPV 16": false,
+              "HPV 18": false
+            }
+          }
+        }
       }
     },
 
-    "Respiratory Panel (SarsCov2 + Influenza)": {
+    "Léguti kit": {
       "kit_name": "Respiratory Panel (SarsCov2 + InfluenzaA és B)",
       "manufacturer": "BioLab Ltd.",
       "catalog_number": "197912-09",
@@ -52,7 +89,7 @@
           "interpretation": "positive_if_amplified"
         },
         "VIC": {
-          "target_name": "IC",
+          "target_name": "RNase P",
           "type": "internal_control",
           "interpretation": "positive_if_amplified"
         },
@@ -75,7 +112,7 @@
             "Influenza A": true,
             "Influenza B": true,
             "Sars-Cov2": true,
-            "IC": true
+            "RNase P": true
           }
         },
         "PK": {
@@ -83,12 +120,80 @@
             "Influenza A": false,
             "Influenza B": false,
             "Sars-Cov2": false,
-            "IC": true
+            "RNase P": true
+          }
+        }
+      },
+      "sample_result": {
+        "invalid minta": {
+          "rules": {
+            "Influenza A": true,
+            "Influenza B": true,
+            "Sars-Cov2": true,
+            "RNase P": true
+          }
+        },
+        "negatív minta": {
+          "rules": {
+            "Influenza A": true,
+            "Influenza B": true,
+            "Sars-Cov2": true,
+            "RNase P": false
+          }
+        },
+        "pozitív minta": {
+          "Influenza A": {
+            "rules": {
+              "Influenza A": false,
+              "Influenza B": true,
+              "Sars-Cov2": true
+            }
+          },
+          "Influenza B": {
+            "rules": {
+              "Influenza A": true,
+              "Influenza B": false,
+              "Sars-Cov2": true
+            }
+          },
+          "Influenza A és B": {
+            "rules": {
+              "Influenza A": false,
+              "Influenza B": false,
+              "Sars-Cov2": true
+            }
+          },
+          "Influenza A és B, Sars-CoV2": {
+            "rules": {
+              "Influenza A": false,
+              "Influenza B": false,
+              "Sars-Cov2": false
+            }
+          },
+          "Sars-CoV2": {
+            "rules": {
+              "Influenza A": true,
+              "Influenza B": true,
+              "Sars-Cov2": false
+            }
+          },
+          "Influenza A, Sars-CoV2" : {
+            "rules": {
+              "Influenza A": false,
+              "Influenza B": true,
+              "Sars-Cov2": false
+            }
+          },
+          "Influenza B, Sars-CoV2": {
+            "rules": {
+              "Influenza A": false,
+              "Influenza B": true,
+              "Sars-Cov2": false
+            }
           }
         }
       }
     }
-
   }
 }
 

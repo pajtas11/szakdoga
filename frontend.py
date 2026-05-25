@@ -49,6 +49,81 @@ st.session_state.setdefault("results", None)
 st.session_state.setdefault("control_map", {})
 st.session_state.setdefault("processed_file", None)
 st.session_state.setdefault("final_layout", None)
+st.session_state.setdefault("full_results", None)
+st.session_state.setdefault("manual_overrides", {})
+st.session_state.setdefault("accepted_wells", [])
+st.session_state.setdefault("validated_wells", {})      # {well_position: datetime string}
+st.session_state.setdefault("control_overrides", {})       # {well_position: {final_result, indok}}
+st.session_state.setdefault("control_accepted_wells", []) # elfogadott kontroll well-ek
+
+def get_target_options(kit_name: str) -> list[str]:
+    """Visszaadja a kit összes lehetséges target kombinációját + üres értéket."""
+    try:
+        from app.kits.selected_kit import load_selected_kit
+        from itertools import combinations
+        kit = load_selected_kit(kit_name)[0]
+        targets = [
+            info["target_name"]
+            for info in kit.get("targets", {}).values()
+            if info.get("type") == "target"
+        ]
+        combos = [""]
+        for r in range(1, len(targets) + 1):
+            for combo in combinations(targets, r):
+                combos.append(", ".join(combo))
+        return combos
+    except Exception:
+        return [""]
+
+
+def render_modify_panel(selected_well, selected_row, overrides, kit_name, accepted_wells_key="accepted_wells"):
+    """Eredmény módosítása panel – selectbox final_result és target mezőkkel."""
+    current_override = overrides.get(selected_well, {})
+    current_final  = current_override.get("final_result", str(selected_row.get("final_result", "")))
+    current_target = current_override.get("target",       str(selected_row.get("target", "")))
+    current_ct     = current_override.get("ct",           str(selected_row.get("ct", "")))
+    current_indok  = current_override.get("módosítás indoka", "")
+
+    final_options = ["negatív", "pozitív"]
+    final_index = final_options.index(current_final) if current_final in final_options else 0
+    new_final = st.selectbox("final_result", options=final_options, index=final_index,
+                              key=f"edit_final_{selected_well}")
+
+    target_options = get_target_options(kit_name)
+    target_index = target_options.index(current_target) if current_target in target_options else 0
+    new_target = st.selectbox("target", options=target_options, index=target_index,
+                               key=f"edit_target_{selected_well}")
+
+    new_ct    = st.text_input("ct", value=current_ct, key=f"edit_ct_{selected_well}")
+    new_indok = st.text_area("Módosítás indoka *", value=current_indok,
+                              key=f"edit_indok_{selected_well}", help="Kötelező mező a mentéshez")
+
+    col_save, col_reset = st.columns(2)
+    with col_save:
+        if st.button("Mentés", key=f"save_{selected_well}", width='stretch'):
+            if not new_indok.strip():
+                st.error("A módosítás indoka kötelező!")
+            else:
+                st.session_state["manual_overrides"][selected_well] = {
+                    "final_result":     new_final,
+                    "target":           new_target,
+                    "ct":               new_ct,
+                    "módosítás indoka": new_indok
+                }
+                if selected_well in st.session_state[accepted_wells_key]:
+                    st.session_state[accepted_wells_key].remove(selected_well)
+                st.session_state["full_results"] = None
+                st.success("Módosítás elmentve!")
+                st.rerun()
+    with col_reset:
+        if st.button("Visszaállítás", key=f"reset_{selected_well}", width='stretch'):
+            st.session_state["manual_overrides"].pop(selected_well, None)
+            if selected_well in st.session_state[accepted_wells_key]:
+                st.session_state[accepted_wells_key].remove(selected_well)
+            st.session_state["full_results"] = None
+            st.success("Eredeti érték visszaállítva!")
+            st.rerun()
+
 
 def on_input_change():
     """Ha bemeneti menüben választottak, töröljük az eredmény választást."""
@@ -67,22 +142,24 @@ st.sidebar.header("Menü")
 
 with st.sidebar.expander("Bemeneti adatok", expanded=True):
     st.radio(
-        "",
+        "Bemeneti adatok",
         INPUT_OPTIONS,
         index=INPUT_OPTIONS.index(st.session_state["input"])
         if st.session_state["input"] in INPUT_OPTIONS else None,
         key="input",
-        on_change=on_input_change
+        on_change=on_input_change,
+        label_visibility="collapsed"
     )
 
 with st.sidebar.expander("Eredmények", expanded=True):
     st.radio(
-        "",
+        "Eredmények",
         RESULT_OPTIONS,
         index=RESULT_OPTIONS.index(st.session_state["results"])
         if st.session_state["results"] in RESULT_OPTIONS else None,
         key="results",
-        on_change=on_results_change
+        on_change=on_results_change,
+        label_visibility="collapsed"
     )
 
 selected_view = st.session_state.get("active_view")
@@ -108,6 +185,8 @@ elif selected_view == "Futási file":
     st.session_state.setdefault("eds_name", None)
     st.session_state.setdefault("eds_bytes", None)
     st.session_state.setdefault("raw_df", None)
+    st.session_state.setdefault("eds_uploader_key_counter", 0)
+    st.session_state.setdefault("eds_uploader_key", "eds_uploader_0")
     #st.session_state.setdefault("channels", None)
 
     # -----------------------
@@ -115,7 +194,7 @@ elif selected_view == "Futási file":
     # -----------------------
     uploaded = st.file_uploader(
         "EDS fájl kiválasztása",
-        key="eds_uploader"
+        key=st.session_state["eds_uploader_key"]
     )
 
     # -----------------------
@@ -159,9 +238,13 @@ elif selected_view == "Futási file":
             st.session_state["eds_bytes"] = None
             st.session_state["raw_df"] = None
             st.session_state["channels"] = None
+            st.session_state["processed_file"] = None
 
-            # a file_uploader widget állapotát is nullázzuk
-            st.session_state["eds_uploader"] = None
+            # A file_uploader widget újraindításához új key-t használunk.
+            st.session_state["eds_uploader_key_counter"] += 1
+            st.session_state["eds_uploader_key"] = (
+                f"eds_uploader_{st.session_state['eds_uploader_key_counter']}"
+            )
             st.rerun()
     else:
         st.warning("⚠️ Még nincs betöltött futási file. Kérlek tölts fel egy EDS fájlt.")
@@ -174,7 +257,7 @@ elif selected_view == "Futási file":
     df = st.session_state.get("raw_df")
     if df is not None:
         st.subheader("Nyers adatok (előnézet)")
-        st.dataframe(df.head(200), use_container_width=True)
+        st.dataframe(df.head(200), width='stretch')
 
         # opcionális: csatornák kijelzése
         if st.session_state.get("channels") is not None:
@@ -296,6 +379,13 @@ elif selected_view == "Minta azonosítók":
 
     st.divider()
 
+    st.session_state.setdefault("reset_sample_id_widgets", False)
+
+    if st.session_state.get("reset_sample_id_widgets"):
+        st.session_state.pop("sample_id_mode", None)
+        st.session_state.pop("sample_id_excel_uploader", None)
+        st.session_state["reset_sample_id_widgets"] = False
+
     # --------------------------------------------------
     # Mód kiválasztása
     # --------------------------------------------------
@@ -305,6 +395,7 @@ elif selected_view == "Minta azonosítók":
             "Általános mintaazonosítók használata",
             "Excel sablon feltöltése"
         ],
+        index=0,
         key="sample_id_mode",
     )
 
@@ -326,11 +417,11 @@ elif selected_view == "Minta azonosítók":
         uploaded_sample_file = st.file_uploader(
             "Excel sablon feltöltése",
             type=["xlsx"],
-            key="sample_id_excel_uploader"
+            key="sample_id_excel_uploader",
         )
 
         if uploaded_sample_file is not None:
-            if st.button("Feltöltött Excel beolvasása", use_container_width=True):
+            if st.button("Feltöltött Excel beolvasása", width='stretch'):
                 load_excel_sample_ids(uploaded_sample_file)
 
     st.divider()
@@ -357,7 +448,7 @@ elif selected_view == "Minta azonosítók":
 
     edited_grid = st.data_editor(
         editable_grid,
-        use_container_width=True,
+        width='stretch',
         num_rows="fixed",
         key="sample_id_plate_editor"
         )
@@ -365,7 +456,7 @@ elif selected_view == "Minta azonosítók":
     col1, col2 = st.columns(2)
 
     with col1:
-        if st.button("Grid módosítások mentése", use_container_width=True):
+        if st.button("Grid módosítások mentése", width='stretch'):
             try:
                 updated_sample_id_df = grid_to_sample_id_df(edited_grid)
                 st.session_state["sample_id_df"] = updated_sample_id_df
@@ -375,7 +466,7 @@ elif selected_view == "Minta azonosítók":
                 st.error(f"A grid mentése nem sikerült: {e}")
 
     with col2:
-        if st.button("Grid kiürítése", use_container_width=True):
+        if st.button("Grid kiürítése", width='stretch'):
             st.session_state["sample_id_df"] = grid_to_sample_id_df(create_empty_plate_grid())
             st.success("A 384 grid kiürítve.")
             st.rerun()
@@ -391,6 +482,7 @@ elif selected_view == "Minta azonosítók":
     if current_sample_df is not None:
         if st.button("Mintaazonosítók törlése", type="secondary"):
             clear_sample_id_state()
+            st.session_state["reset_sample_id_widgets"] = True
             st.rerun()
 
 # ==============================
@@ -435,38 +527,29 @@ elif selected_view == "Kontrollok":
         col1, col2 = st.columns(2)
         
         with col1:
-            # Ez a selectbox adja meg a változó értékét!
             selected_type = st.selectbox(
-                "Melyik kontrollt helyezed el?", 
+                "Kontrollok",
                 options=final_control_options
             )
+
         with col2:
-            # Csak az EDS-ben lévő welleket adjuk fel (ha be van töltve)
             raw_df = st.session_state.get("raw_df")
-        
 
             if raw_df is not None:
-                # Kivesszük az egyedi well-neveket és sorba rendezzük őket
-                # Fontos a logikus sorrend (A1, A2... nem A1, A10, A2)
                 available_wells = sorted(
-                raw_df['well_position'].unique(), 
-                key=lambda x: (ord(x[0]), int(x[1:]))
+                    raw_df['well_position'].unique(),
+                    key=lambda x: (ord(x[0]), int(x[1:]))
                 )
                 st.success(f"Az EDS fájl alapján {len(available_wells)} mért well közül választhatsz.")
-            else:
-        # Ha nincs EDS, vagy minden well-t felajánlasz, vagy (ajánlott) korlátozod
-                available_wells = []
-                st.warning("⚠️ Nincs betöltött EDS fájl! Kérlek, előbb töltsd fel a futási fájlt a 'Futási file' menüpontban.")
-
-        # 2. A multiselect már csak ezeket mutatja
-            if available_wells:
                 selected_wells = st.multiselect(
                     f"Wells a(z) {selected_type} kontrollhoz",
                     options=available_wells,
                     key=f"wells_input_{selected_type}"
                 )
             else:
-                st.info("A kontrollok kijelöléséhez szükség van a betöltött futási adatokra.")
+                available_wells = []
+                selected_wells = []
+                st.warning("⚠️ Nincs betöltött EDS fájl! Kérlek, előbb töltsd fel a futási fájlt a 'Futási file' menüpontban.")
 
         if st.button("Kijelölt kontrollok mentése"):
             if selected_wells:
@@ -540,7 +623,7 @@ elif selected_view == "Összefoglaló":
     if eds_ready and kit_ready and samples_ready:
         st.success("Minden kötelező adat rendelkezésre áll.")
         
-        if st.button("ADATOK VÉGLEGESÍTÉSE ÉS ELEMZÉS INDÍTÁSA", type="primary", use_container_width=True):
+        if st.button("ADATOK VÉGLEGESÍTÉSE ÉS ELEMZÉS INDÍTÁSA", type="primary", width='stretch'):
             from app.pcr.finalize_plate_layout import finalize_plate_layout
             
             # Layout összefűzése
@@ -562,7 +645,6 @@ elif selected_view == "Összefoglaló":
 elif selected_view == "Kontrollok eredményei":
     st.header("Kontroll eredmények ellenőrzése")
 
-    # Adatok lekérése a session_state-ből
     eds_bytes = st.session_state.get("eds_bytes")
     final_layout = st.session_state.get("final_layout")
     kit_name = st.session_state.get("selected_kit")
@@ -571,54 +653,158 @@ elif selected_view == "Kontrollok eredményei":
         st.warning("⚠️ Hiányzó adatok! Kérlek, előbb töltsd fel az EDS fájlt és véglegesítsd a layoutot az 'Összefoglaló' fülön.")
     else:
         try:
-            # 1. Kontroll táblázat generálása (ez kell a visual_PCR_curves_controls-nak)
             file_for_backend = io.BytesIO(eds_bytes)
             df_controls_result = control_table(
-                file=file_for_backend, 
-                sampleid_df=final_layout, 
+                file=file_for_backend,
+                sampleid_df=final_layout,
                 selected_kit_name=kit_name
             )
 
-            # --- TÁBLÁZAT MEGJELENÍTÉSE ---
-            st.subheader("Kontroll statisztika")
-            if df_controls_result is not None and not df_controls_result.empty:
-                st.dataframe(df_controls_result, use_container_width=True)
-                
-                st.divider()
+            if df_controls_result is None or df_controls_result.empty:
+                st.info("Nincsenek megjeleníthető kontroll adatok.")
+            else:
+                # Manuális override-ok alkalmazása
+                ctrl_overrides = st.session_state["control_overrides"]
+                ctrl_accepted  = st.session_state["control_accepted_wells"]
+                df_controls_display = df_controls_result.copy()
+                for wp, changes in ctrl_overrides.items():
+                    mask = df_controls_display["well_position"] == wp
+                    if "final_result" in changes:
+                        df_controls_display.loc[mask, "final_result"] = changes["final_result"]
 
-                # --- GÖRBÉK MEGJELENÍTÉSE ---
-                st.subheader("Kontroll amplifikációs görbék")
-
-                # Kigyűjtjük az egyedi kontroll neveket a táblázatból
-                available_control_names = df_controls_result["sample_id"].unique()
-
-                selected_control = st.selectbox(
-                    "Válassz egy kontrollt a görbe megtekintéséhez:",
-                    options=available_control_names
+                # Elfogadva oszlop
+                df_controls_display["Elfogadva"] = df_controls_display["well_position"].map(
+                    lambda wp: wp in ctrl_accepted
                 )
 
-                if selected_control:
-                
-                # Meghívjuk a saját vizualizációs függvényedet a kért paraméterekkel
-                    file_for_viz = io.BytesIO(eds_bytes)
-                    fig_controls = visual_PCR_curves_controls(
-                        file=file_for_viz,
-                        sampleid_df=final_layout,
-                        selected_kit_name=kit_name,
-                        controls_table=df_controls_result,
-                        control_name=selected_control
-                    )
+                # --- TÁBLÁZAT – sorra kattintható ---
+                st.subheader("Kontroll statisztika")
 
-                # Megjelenítés (attól függően, hogy a függvényed Plotly vagy Matplotlib objektumot ad vissza)
-                    if fig_controls is not None:
-                    # Ha Plotly (px/go)
-                        st.plotly_chart(fig_controls, use_container_width=True)
-                    # Ha a függvényed Matplotlib/Seaborn (plt.figure), használd ezt:
-                        #st.pyplot(fig_controls)
-                    else:
-                        st.info("A vizualizáció nem elérhető.")
-            else:
-                st.info("Nincsenek megjeleníthető kontroll adatok.")
+                st.write("Kattints egy sorra a görbe és módosítás megjelenítéséhez:")
+
+                ctrl_selection = st.dataframe(
+                    df_controls_display,
+                    width='stretch',
+                    hide_index=True,
+                    on_select="rerun",
+                    selection_mode="single-row",
+                    key="ctrl_row_selector"
+                )
+
+                col_ctrl_unaccept, _ = st.columns([1, 3])
+                with col_ctrl_unaccept:
+                    if st.button("↩️ Összes elfogadás visszavonása", width='stretch'):
+                        st.session_state["control_accepted_wells"] = []
+                        st.success("Összes kontroll elfogadás visszavonva!")
+                        st.rerun()
+
+                ctrl_selected_rows = ctrl_selection["selection"]["rows"] if ctrl_selection else []
+
+                if ctrl_selected_rows:
+                    ctrl_row_index = ctrl_selected_rows[0]
+                    ctrl_row = df_controls_display.iloc[ctrl_row_index]
+                    ctrl_well = ctrl_row["well_position"]
+                    ctrl_sample_id = str(ctrl_row.get("sample_id", ""))
+                    ctrl_current_result = str(ctrl_row.get("final_result", ""))
+
+                    st.divider()
+                    col_chart, col_edit = st.columns([2, 1])
+
+                    # --- GÖRBE ---
+                    with col_chart:
+                        st.subheader(f"PCR görbe – {ctrl_sample_id} ({ctrl_well})")
+                        try:
+                            file_for_viz = io.BytesIO(eds_bytes)
+                            fig_controls = visual_PCR_curves_controls(
+                                file=file_for_viz,
+                                sampleid_df=final_layout,
+                                selected_kit_name=kit_name,
+                                controls_table=df_controls_result,
+                                control_name=ctrl_sample_id
+                            )
+                            if fig_controls is not None:
+                                st.plotly_chart(fig_controls, width='stretch')
+                            else:
+                                st.info("A vizualizáció nem elérhető.")
+                        except Exception as e:
+                            st.error(f"Hiba a görbe betöltésekor: {e}")
+
+                    # --- MÓDOSÍTÁS PANEL ---
+                    with col_edit:
+                        current_override = ctrl_overrides.get(ctrl_well, {})
+                        current_result = current_override.get("final_result", ctrl_current_result)
+                        current_indok  = current_override.get("indok", "")
+
+                        action = st.radio(
+                            "Döntés:",
+                            options=["Elfogad", "Módosít"],
+                            key=f"ctrl_action_{ctrl_well}"
+                        )
+
+                        if action == "Elfogad":
+                            st.subheader("Elfogadás")
+                            is_ctrl_accepted = ctrl_well in ctrl_accepted
+                            if not is_ctrl_accepted:
+                                if st.button("Elfogadás mentése", key=f"ctrl_accept_{ctrl_well}",
+                                             width='stretch'):
+                                    if ctrl_well not in st.session_state["control_accepted_wells"]:
+                                        st.session_state["control_accepted_wells"].append(ctrl_well)
+                                    st.session_state["control_overrides"].pop(ctrl_well, None)
+                                    st.success("Elfogadva!")
+                                    st.rerun()
+                            else:
+                                st.success(f"✅ Elfogadva")
+                                if st.button("↩️ Elfogadás visszavonása", key=f"ctrl_unaccept_{ctrl_well}",
+                                             width='stretch'):
+                                    st.session_state["control_accepted_wells"].remove(ctrl_well)
+                                    st.rerun()
+
+                        else:  # Módosít
+                            st.subheader("Eredmény módosítása")
+
+                            # Lehetséges értékek: Valid/Invalid a kontroll nevével
+                            result_options = [
+                                f"Valid {ctrl_sample_id}",
+                                f"Invalid {ctrl_sample_id}"
+                            ]
+                            result_index = result_options.index(current_result)                                 if current_result in result_options else 0
+
+                            new_result = st.selectbox(
+                                "final_result",
+                                options=result_options,
+                                index=result_index,
+                                key=f"ctrl_result_{ctrl_well}"
+                            )
+                            new_indok = st.text_area(
+                                "Módosítás indoka *",
+                                value=current_indok,
+                                key=f"ctrl_indok_{ctrl_well}",
+                                help="Kötelező mező a mentéshez"
+                            )
+
+                            col_save, col_reset = st.columns(2)
+                            with col_save:
+                                if st.button("Mentés", key=f"ctrl_save_{ctrl_well}",
+                                             width='stretch'):
+                                    if not new_indok.strip():
+                                        st.error("A módosítás indoka kötelező!")
+                                    else:
+                                        st.session_state["control_overrides"][ctrl_well] = {
+                                            "final_result": new_result,
+                                            "indok":        new_indok
+                                        }
+                                        if ctrl_well in st.session_state["control_accepted_wells"]:
+                                            st.session_state["control_accepted_wells"].remove(ctrl_well)
+                                        st.success("Módosítás elmentve!")
+                                        st.rerun()
+                            with col_reset:
+                                if st.button("Visszaállítás", key=f"ctrl_reset_{ctrl_well}",
+                                             width='stretch'):
+                                    st.session_state["control_overrides"].pop(ctrl_well, None)
+                                    st.success("Eredeti érték visszaállítva!")
+                                    st.rerun()
+                else:
+                    st.info("Jelölj ki egy sort a táblázatban a görbe és módosítás megjelenítéséhez.")
 
         except Exception as e:
             st.error(f"Hiba történt a kontrollok feldolgozása során: {e}")
@@ -643,9 +829,21 @@ elif selected_view == "PCR görbe megjelenítés":
             from app.pcr.evaluate_samples import evaluate_samples
             file_buf = io.BytesIO(eds_bytes)
             backend_layout = final_layout.copy()
-            
-            # Eredmények kiszámítása
-            full_results = evaluate_samples(file_buf, backend_layout, kit_name)
+
+            # session_state-ből vesszük ha már kiszámolt, különben újraszámoljuk
+            if st.session_state["full_results"] is not None:
+                full_results = st.session_state["full_results"].copy()
+            else:
+                full_results = evaluate_samples(file_buf, backend_layout, kit_name)
+
+            # Manuális módosítások alkalmazása
+            overrides = st.session_state.get("manual_overrides", {})
+            for wp, changes in overrides.items():
+                mask = full_results["well_position"] == wp
+                for col, val in changes.items():
+                    if col in full_results.columns:
+                        full_results.loc[mask, col] = val
+
         except Exception as e:
             st.error(f"Hiba az értékelés során: {e}")
             st.stop()
@@ -688,7 +886,7 @@ elif selected_view == "PCR görbe megjelenítés":
                     
                         if not res_row.empty:
                             row = res_row.iloc[0]
-                            if row.get('well_type') == 'Control':
+                            if row.get('sample_id') == 'NTC' or row.get('sample_id') == 'PK' or row.get('sample_id') == 'Prep_NTC':
                                 status = "Kontroll"
                                 color = "#3498db"
                             elif not row.get('valid', True):
@@ -718,19 +916,31 @@ elif selected_view == "PCR görbe megjelenítés":
                     }
                 )
             
-                fig_grid.update_traces(marker=dict(size=22, symbol="square", line=dict(width=1, color="black")))
-            
+                fig_grid.update_traces(marker=dict(size=16, symbol="square", line=dict(width=0.5, color="black")))
+
                 fig_grid.update_layout(
                     clickmode='event+select',
-                    xaxis=dict(side='top', type='category', title=""),
-                # Itt a titok: Fix kategória sorrend + fordított skála az A felülhöz
-                    yaxis=dict(type='category', title="", categoryorder='array', categoryarray=rows, autorange="reversed"),
-                    showlegend=True, height=550, margin=dict(l=0, r=0, b=0, t=40)
+                    xaxis=dict(
+                        side='top', type='category', title="",
+                        tickfont=dict(size=10),
+                        fixedrange=True
+                    ),
+                    yaxis=dict(
+                        type='category', title="",
+                        categoryorder='array', categoryarray=rows,
+                        autorange="reversed",
+                        tickfont=dict(size=10),
+                        fixedrange=True
+                    ),
+                    showlegend=True,
+                    height=600,
+                    autosize=True,
+                    margin=dict(l=20, r=20, b=20, t=40)
                 )
 
                 # Kattintás figyelése
                 # FONTOS: Nem használunk manuális st.rerun()-t a blokkon belül!
-                event = st.plotly_chart(fig_grid, on_select="rerun", use_container_width=True, key="plate_chart")
+                event = st.plotly_chart(fig_grid, on_select="rerun", width='stretch', key="plate_chart")
 
                 # Ha a felhasználó kattintott, frissítjük a session state-et
                 if event and "selection" in event and event["selection"]["points"]:
@@ -755,7 +965,7 @@ elif selected_view == "PCR görbe megjelenítés":
                         file_buf_viz = io.BytesIO(eds_bytes)
                         fig_s = visual_samples(file_buf_viz, backend_layout, kit_name, current_well)
                         if fig_s:
-                            st.plotly_chart(fig_s, use_container_width=True)
+                            st.plotly_chart(fig_s, width='stretch')
                     except Exception as e:
                         st.error(f"Hiba a görbe megjelenítésekor: {e}")
                 else:
@@ -770,7 +980,7 @@ elif selected_view == "PCR görbe megjelenítés":
                         title="Minden minta és kontroll", template="plotly_white"
                     )
                     fig_all.update_layout(showlegend=False)
-                    st.plotly_chart(fig_all, use_container_width=True)
+                    st.plotly_chart(fig_all, width='stretch')
 
 
 # ==============================
@@ -790,19 +1000,47 @@ elif selected_view == "Táblázatos megjelenítés":
         try:
             from app.pcr.evaluate_samples import evaluate_samples
             file_buf = io.BytesIO(eds_bytes)
-            
-            # Oszlopnév kompatibilitás
+
             backend_layout = final_layout.copy()
             if 'sample_id' in backend_layout.columns and 'sampleid' not in backend_layout.columns:
                 backend_layout['sampleid'] = backend_layout['sample_id']
             elif 'sampleid' in backend_layout.columns and 'sample_id' not in backend_layout.columns:
                 backend_layout['sample_id'] = backend_layout['sampleid']
 
-            full_results = evaluate_samples(file_buf, backend_layout, kit_name)
-            
-            # Csak a fontos oszlopokat mutatjuk meg az átláthatóságért
-            display_cols = ['well', 'well_position', 'sample_id','final_result', 'target', 'ct' ]
-            # Ellenőrizzük, hogy minden kért oszlop létezik-e
+            # Csak egyszer futtatjuk, utána session_state-ből olvassuk
+            if st.session_state["full_results"] is None:
+                full_results = evaluate_samples(file_buf, backend_layout, kit_name)
+                st.session_state["full_results"] = full_results.copy()
+            else:
+                full_results = st.session_state["full_results"].copy()
+
+            # Manuális módosítások alkalmazása
+            overrides = st.session_state["manual_overrides"]
+            accepted_wells = st.session_state["accepted_wells"]
+
+            for wp, changes in overrides.items():
+                mask = full_results["well_position"] == wp
+                for col, val in changes.items():
+                    if col in full_results.columns:
+                        full_results.loc[mask, col] = val
+                # flag: "Manuálisan módosítva: {indok}"
+                if "flag" in full_results.columns:
+                    indok = changes.get("módosítás indoka", "")
+                    full_results.loc[mask, "flag"] = f"Manuálisan módosítva: {indok}"
+
+            # Elfogadott sorok flag frissítése
+            for wp in accepted_wells:
+                mask = full_results["well_position"] == wp
+                if "flag" in full_results.columns:
+                    full_results.loc[mask, "flag"] = "Elfogadva"
+
+            # Validálva oszlop hozzáadása: False vagy validálás dátuma
+            validated_wells_map = st.session_state["validated_wells"]
+            full_results["Validálva"] = full_results["well_position"].map(
+                lambda wp: validated_wells_map.get(wp, False)
+            )
+
+            display_cols = ['well', 'well_position', 'sample_id', 'final_result', 'target', 'ct', 'flag', 'Validálva']
             existing_cols = [c for c in display_cols if c in full_results.columns]
             df_display = full_results[existing_cols]
 
@@ -810,44 +1048,146 @@ elif selected_view == "Táblázatos megjelenítés":
             st.error(f"Hiba az adatok feldolgozása során: {e}")
             st.stop()
 
-        # 2. TÁBLÁZAT MEGJELENÍTÉSE KIJELÖLHETŐ SOROKKAL
-        st.write("Kattints egy sorra a PCR görbe megtekintéséhez:")
-        
-        # A táblázat, ahol a sor kijelölése váltja ki a görbe megjelenítését
+        # 2. SZŰRŐK
+        col1, col2 = st.columns(2)
+        with col1:
+            show_flagged = st.checkbox("Csak manuális értékelést igénylő sorok", value=False)
+        with col2:
+            show_positive = st.checkbox("Csak pozitív target-tel rendelkező sorok", value=False)
+
+        df_filtered = df_display.copy()
+        if show_flagged and "flag" in df_filtered.columns:
+            df_filtered = df_filtered[df_filtered["flag"].str.strip() != ""]
+        if show_positive and "target" in df_filtered.columns:
+            df_filtered = df_filtered[df_filtered["target"].str.strip() != ""]
+
+        # 3. TÁBLÁZAT – sorra kattintva görbe + módosítás, pipával validálás
+        validated_wells = st.session_state["validated_wells"]
+
+        # Validálás csak akkor engedélyezett, ha minden kontroll el van fogadva
+        ctrl_accepted = st.session_state.get("control_accepted_wells", [])
+        minden_kontroll_elfogadva = len(ctrl_accepted) > 0
+
+        validalhato_wells = [
+            wp for wp in df_filtered["well_position"].tolist()
+            if str(df_filtered.loc[df_filtered["well_position"] == wp, "flag"].values[0]).strip() != "manuális értékelést igényel"
+        ] if minden_kontroll_elfogadva else []
+
+        if not minden_kontroll_elfogadva:
+            st.warning("⚠️ A validálás nem lehetséges: előbb fogadd el az összes kontrollt a **Kontrollok eredményei** fülön.")
+
+        st.write("Kattints egy sorra a görbe és módosítás megjelenítéséhez:")
+
+        # Egyetlen táblázat – sorkijelöléssel
         selection = st.dataframe(
-            df_display,
-            use_container_width=True,
+            df_filtered,
+            width='stretch',
             hide_index=True,
-            on_select="rerun", # Ez teszi interaktívvá
-            selection_mode="single-row" # Egyszerre egy görbét nézünk
+            on_select="rerun",
+            selection_mode="single-row",
+            key="row_selector"
         )
 
-        # 3. GÖRBE MEGJELENÍTÉSE A TÁBLÁZAT ALATT (VAGY MELLETT)
-        # Ha a felhasználó kijelölt egy sort a táblázatban
-        if selection and selection["selection"]["rows"]:
-            selected_row_index = selection["selection"]["rows"][0]
-            selected_well = df_display.iloc[selected_row_index]["well_position"]
-            
+        # Összes validálható sor validálása / visszavonása
+        col_val_all, col_unval_all, _ = st.columns([1, 1, 3])
+        with col_val_all:
+            if st.button("☑ Összes validálása", width='stretch'):
+                from datetime import datetime
+                now = datetime.now().strftime("%Y.%m.%d. %H:%M")
+                for wp in validalhato_wells:
+                    st.session_state["validated_wells"][wp] = now
+                st.success(f"{len(validalhato_wells)} sor sikeresen validálva ({now})!")
+                st.rerun()
+        with col_unval_all:
+            if st.button("↩️ Összes visszavonása", width='stretch'):
+                st.session_state["validated_wells"] = {}
+                st.session_state["full_results"] = None
+                st.success("Összes validálás visszavonva!")
+                st.rerun()
+
+        # 4. KIJELÖLT SOR – GÖRBE + DÖNTÉS + VALIDÁLÁS
+        selected_rows = selection["selection"]["rows"] if selection else []
+
+        if selected_rows:
+            selected_row_index = selected_rows[0]
+            selected_row = df_filtered.iloc[selected_row_index]
+            selected_well = selected_row["well_position"]
+            selected_flag = str(selected_row.get("flag", "")).strip()
+            is_manual_review = selected_flag == "manuális értékelést igényel"
+            is_validalhato = selected_well in validalhato_wells
+            is_validated = selected_well in validated_wells
+
+            # Validálás / visszavonás a kijelölt sorra
+            col_val, col_unval, _ = st.columns([1, 1, 3])
+            with col_val:
+                if is_validalhato and not is_validated:
+                    if st.button("✅ Sor validálása", width='stretch', type="primary"):
+                        from datetime import datetime
+                        now = datetime.now().strftime("%Y.%m.%d. %H:%M")
+                        st.session_state["validated_wells"][selected_well] = now
+                        st.session_state["full_results"] = None
+                        st.rerun()
+                elif is_validated:
+                    st.success(f"✅ {validated_wells[selected_well]}")
+                else:
+                    st.warning("⚠️ Előbb döntsd el a flag-et")
+            with col_unval:
+                if is_validated:
+                    if st.button("↩️ Visszavonás", width='stretch'):
+                        del st.session_state["validated_wells"][selected_well]
+                        st.session_state["full_results"] = None
+                        st.rerun()
+
             st.divider()
-            with st.container(border=True):
-                st.subheader(f" PCR Görbe – Well: {selected_well}")
+            col_chart, col_edit = st.columns([2, 1])
+
+            with col_chart:
+                st.subheader(f"PCR görbe – Well: {selected_well}")
                 try:
                     from app.output.samples_output import visual_samples
                     file_buf_viz = io.BytesIO(eds_bytes)
-                    
                     fig = visual_samples(
                         file=file_buf_viz,
                         sampleid_df=backend_layout,
                         selected_kit_name=kit_name,
                         well_position=selected_well
                     )
-                    
                     if fig:
-                        st.plotly_chart(fig, use_container_width=True)
+                        st.plotly_chart(fig, width='stretch')
                 except Exception as e:
                     st.error(f"Hiba a görbe betöltésekor: {e}")
-        else:
-            st.info("Jelölj ki egy sort a táblázatban a részletes PCR görbe megjelenítéséhez.")
+
+            with col_edit:
+                # --- "manuális értékelést igényel" sorok: Elfogad vagy Módosít ---
+                if is_manual_review:
+                    st.subheader("Ellenőrzés szükséges")
+                    st.warning("Ez a sor manuális ellenőrzést igényel.")
+
+                    action = st.radio(
+                        "Döntés:",
+                        options=["Elfogad", "Módosít"],
+                        key=f"action_{selected_well}"
+                    )
+
+                    if action == "Elfogad":
+                        if st.button("Elfogadás mentése", key=f"accept_{selected_well}", width='stretch'):
+                            if selected_well not in st.session_state["accepted_wells"]: st.session_state["accepted_wells"].append(selected_well)
+                            # override-ból töröljük ha volt korábbi módosítás
+                            st.session_state["manual_overrides"].pop(selected_well, None)
+                            st.session_state["full_results"] = None
+                            st.success("Elfogadva!")
+                            st.rerun()
+
+                    else:  # Módosít
+                        st.subheader("Eredmény módosítása")
+                        render_modify_panel(selected_well, selected_row, overrides, kit_name)
+
+                # --- Többi sor: módosítás + validálás visszavonása ---
+                else:
+                    st.subheader("Eredmény módosítása")
+                    render_modify_panel(selected_well, selected_row, overrides, kit_name)
+
+
 
 # ==============================
 # Export
@@ -874,7 +1214,38 @@ elif selected_view == "Export":
                 backend_layout["sample_id"] = backend_layout["sampleid"]
 
             file_buf = io.BytesIO(eds_bytes)
-            full_results = evaluate_samples(file_buf, backend_layout, kit_name)
+
+            # session_state-ből vesszük ha már kiszámolt, különben újraszámoljuk
+            if st.session_state["full_results"] is not None:
+                full_results = st.session_state["full_results"].copy()
+            else:
+                full_results = evaluate_samples(file_buf, backend_layout, kit_name)
+
+            # Manuális módosítások alkalmazása az exporthoz is
+            overrides = st.session_state.get("manual_overrides", {})
+            accepted_wells = st.session_state.get("accepted_wells", set())
+
+            for wp, changes in overrides.items():
+                mask = full_results["well_position"] == wp
+                for col, val in changes.items():
+                    if col in full_results.columns:
+                        full_results.loc[mask, col] = val
+                # flag: "Manuálisan módosítva: {indok}"
+                if "flag" in full_results.columns:
+                    indok = changes.get("módosítás indoka", "")
+                    full_results.loc[mask, "flag"] = f"Manuálisan módosítva: {indok}"
+
+            # Elfogadott sorok flag frissítése
+            for wp in accepted_wells:
+                mask = full_results["well_position"] == wp
+                if "flag" in full_results.columns:
+                    full_results.loc[mask, "flag"] = "Elfogadva"
+
+            # Validálás ideje oszlop – csak validált soroknál töltve
+            validated_wells_export = st.session_state.get("validated_wells", {})
+            full_results["Validálás ideje"] = full_results["well_position"].map(
+                lambda wp: validated_wells_export.get(wp, "")
+            )
 
             if full_results is None or full_results.empty:
                 st.info("Nincs exportálható eredmény.")
@@ -893,6 +1264,8 @@ elif selected_view == "Export":
                     "target",
                     "ct",
                     "valid",
+                    "flag",
+                    "Validálás ideje",
                     "well_type",
                 ]
                 if col in all_columns
@@ -934,7 +1307,7 @@ elif selected_view == "Export":
                 st.warning("A szűrés után nincs megjeleníthető vagy exportálható adat.")
             elif selected_columns:
                 preview_df = export_df[selected_columns].copy()
-                st.dataframe(preview_df, use_container_width=True)
+                st.dataframe(preview_df, width='stretch')
 
                 file_data, file_name, mime = build_export_file(
                     df=export_df,
@@ -947,7 +1320,7 @@ elif selected_view == "Export":
                     data=file_data,
                     file_name=file_name,
                     mime=mime,
-                    use_container_width=True
+                    width='stretch'
                 )
             else:
                 st.info("Válassz ki legalább egy oszlopot az előnézethez és exporthoz.")

@@ -100,9 +100,6 @@ def clear_sample_id_state():
     st.session_state["sample_id_file_name"] = None
     st.session_state["sample_id_df"] = None
     st.session_state["plate_layout_df"] = None
-    st.session_state["sample_id_mode"] = None
-    if "sample_id_excel_uploader" in st.session_state:
-        st.session_state["sample_id_excel_uploader"] = None
 
 
 def load_basic_sample_ids():
@@ -139,7 +136,7 @@ def load_excel_sample_ids(uploaded_file):
             return
 
         plate_df = pd.read_excel(xls, sheet_name="384well_plate")
-        sample_id_df = pd.read_excel(xls, sheet_name="Sample_ID")
+        sample_id_df = pd.read_excel(xls, sheet_name="Sample_ID", dtype={"sample_id": str})
 
         st.session_state["sample_id_source_path"] = uploaded_file.name
         st.session_state["sample_id_file_name"] = uploaded_file.name
