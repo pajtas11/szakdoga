@@ -35,17 +35,23 @@ def kit_info(selected_kit_name: str):
     config = load_selected_kit(selected_kit_name)[0]
     targets = config["targets"]
 
-    mapping = []
+    target_mapping = []
+    ic_mapping = []
 
     for dye, info in targets.items():
-        target_name = info["target_name"]
-        mapping.append(f"{target_name} ({dye}) ")
+        if info['type'] == "target":
+            target_name = info["target_name"]
+            target_mapping.append(f"{target_name} ({dye}) ")
+        else:
+            ic_mapping.append(f"{info['target_name']} ({dye}) ")
+
 
     kit_info = {
         'kit name ': config['kit_name'],
         'manufacturer': config['manufacturer'],
         'catalog_number': config['catalog_number'],
-        'target': mapping
+        'target': target_mapping,
+        'internal control': ic_mapping
     }
     rows = []
 

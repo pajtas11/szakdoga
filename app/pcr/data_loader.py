@@ -54,7 +54,7 @@ def eds_extract(file):
                 continue
 
             dye = dyes[dye_idx]
-            values = [float(v) for v in cycle_data.text.strip("[]").split(",")]
+            values = [int(float(v)) for v in cycle_data.text.strip("[]").split(",")]
 
             for cycle_idx, value in enumerate(values):
                 rows.append({
