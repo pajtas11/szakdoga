@@ -379,13 +379,6 @@ elif selected_view == "Minta azonosítók":
 
     st.divider()
 
-    st.session_state.setdefault("reset_sample_id_widgets", False)
-
-    if st.session_state.get("reset_sample_id_widgets"):
-        st.session_state.pop("sample_id_mode", None)
-        st.session_state.pop("sample_id_excel_uploader", None)
-        st.session_state["reset_sample_id_widgets"] = False
-
     # --------------------------------------------------
     # Mód kiválasztása
     # --------------------------------------------------
@@ -395,7 +388,6 @@ elif selected_view == "Minta azonosítók":
             "Általános mintaazonosítók használata",
             "Excel sablon feltöltése"
         ],
-        index=0,
         key="sample_id_mode",
     )
 
@@ -417,7 +409,7 @@ elif selected_view == "Minta azonosítók":
         uploaded_sample_file = st.file_uploader(
             "Excel sablon feltöltése",
             type=["xlsx"],
-            key="sample_id_excel_uploader",
+            key="sample_id_excel_uploader"
         )
 
         if uploaded_sample_file is not None:
@@ -481,8 +473,7 @@ elif selected_view == "Minta azonosítók":
     # --------------------------------------------------
     if current_sample_df is not None:
         if st.button("Mintaazonosítók törlése", type="secondary"):
-            clear_sample_id_state()
-            st.session_state["reset_sample_id_widgets"] = True
+            clear_sample_id_state()            
             st.rerun()
 
 # ==============================
