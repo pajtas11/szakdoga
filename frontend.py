@@ -28,11 +28,11 @@ from app.utils.plate_utils import (
 )
 
 st.set_page_config(
-    page_title="PCR görbeértékelő alkalmazás",
+    page_title="PCR-vizsgálat értékelő alkalmazás",
     layout="wide"
 )
 
-st.title("PCR görbeértékelő alkalmazás")
+st.title("PCR-vizsgálat értékelő alkalmazás")
 
 # ----------------------------
 # Opciók
